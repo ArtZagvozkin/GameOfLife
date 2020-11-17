@@ -6,12 +6,10 @@ import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.*;
 import java.io.*;
-import java.lang.reflect.Array;
 import java.util.*;
 import java.util.Timer;
 
 public class Main {
-
     //Параметры игры
     int PointRadius = 1; //Радиус живой клетки
     Color PointColor = Color.black;  //Цвет живой клетки
@@ -23,7 +21,7 @@ public class Main {
     boolean[][] CurrentWorld = new boolean[Width][Height]; //Состояние текущей всленной
     boolean[][] NextWorld = new boolean[Width][Height]; //Следующая вселенная
     Canvas CanvasWorld = new Canvas(); //Канва для отображения вселенной
-    JFrame frame = new JFrame("Game of Life"); //Создаем frame с заголовком "Game of Life"
+    JFrame MainFrame = new JFrame("Game of Life"); //Создаем frame с заголовком "Game of Life"
 
     //Дополнительный функционал
     volatile boolean isGenerate = false; //Ключ, который разрешает генерацию нового поколения. Для реализации паузы
@@ -33,17 +31,18 @@ public class Main {
 
     public static void main(String[] args) {
         //Запускаем метод, который отрисовывает frame
-        new Main().showFrame();
+        new Main().showMainFrame();
     }
 
-    //Запуск и отрисовка окна
-    void showFrame() {
-        //Описываем окно
-        frame.setResizable(false); //Запрет на изменение размера окна
-        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);  //Завершение программы при закрытии окна
-        frame.setMinimumSize(new Dimension(600,100)); //Задаём минимальные размеры окна (600*100)
-        frame.getContentPane().add(CanvasWorld, BorderLayout.CENTER); //Помещаем CanvasWorld в frame
-        frame.setBackground(Color.LIGHT_GRAY); //Фон окна
+    //Запуск и отрисовка главного окна
+    @SuppressWarnings("InfiniteLoopStatement")
+    void showMainFrame() {
+        //Описываем главный фрейм
+        MainFrame.setResizable(false); //Запрет на изменение размера окна
+        MainFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);  //Завершение программы при закрытии окна
+        MainFrame.setMinimumSize(new Dimension(600,100)); //Задаём минимальные размеры окна (600*100)
+        MainFrame.getContentPane().add(CanvasWorld, BorderLayout.CENTER); //Помещаем CanvasWorld в frame
+        MainFrame.setBackground(Color.LIGHT_GRAY); //Фон окна
         CanvasWorld.setBackground(Color.WHITE); //Фон вселенной
         resizeWorld(Width, Height);
 
@@ -151,10 +150,10 @@ public class Main {
         menuBar.add(BtnStart);
         menuBar.add(PnlInfo);
         //Помещаем menuBar в frame
-        frame.setJMenuBar(menuBar);
+        MainFrame.setJMenuBar(menuBar);
 
         //Делаем frame видимым
-        frame.setVisible(true);
+        MainFrame.setVisible(true);
 
         //Запускаем таймер
         TimerTask tmrTask = new TimerTask() {
@@ -183,12 +182,11 @@ public class Main {
     void resizeWorld(int x, int y) {
         Width = x;
         Height = y;
-        PointRadius = Math.min(1360 / x, 654 / y);
-
+        PointRadius = Math.max(1, Math.min(1360 / x, 654 / y));
         CanvasWorld.setSize(Width * PointRadius, Height * PointRadius);
 
-        frame.setSize(Width * PointRadius + 16, Height * PointRadius + 67); //Размер окна
-        frame.setLocationRelativeTo(null); //Окно по центру
+        MainFrame.setSize(Width * PointRadius + 16, Height * PointRadius + 67); //Размер окна
+        MainFrame.setLocationRelativeTo(null); //Окно по центру
     }
 
     //Формируем следующий кадр
@@ -226,7 +224,6 @@ public class Main {
 
     //Парсинг файла .rle
     void rleToMatrix(File inFile) {
-        String TestField1 = "";
 
         try {
             FileReader rleFile = new FileReader(inFile);
@@ -238,7 +235,7 @@ public class Main {
             boolean isReadLine = true; //Ключ, который разрешает чтение строки, пока не встретится символ конца файла
             //Начинаем в цикле построчно обрабатывать файл
             int countCells = 0; //Накапливаем количество ячеек
-            int iX = 1, iY = 1;
+            int iX = 9, iY = 9;
             while (line != null && isReadLine) {
                 //Пропускаем строки с комментариями #
                 if (line.charAt(0) == '#')
@@ -257,12 +254,14 @@ public class Main {
                     sY = line.substring(line.indexOf('y') + 2);
                     //Задаем новые параметры окна
                     try {
-                        if (Integer.parseInt(sX) > 1500 || Integer.parseInt(sY) > 600)
+                        //Проверка на допустимые параметры X и Y
+                        if (Integer.parseInt(sX) > 10000 || Integer.parseInt(sY) > 1200 || Integer.parseInt(sX) == 0 || Integer.parseInt(sY) == 0)
                         {
-                            JOptionPane.showMessageDialog(null, "Слишком большое изображение. Не удалось загрузить.");
+                            JOptionPane.showMessageDialog(null, "Ошибка. Недопустимый размер поля.");
                             break;
                         }
-                        resizeWorld(Integer.parseInt(sX) + 20, Integer.parseInt(sY) + 20);
+                        //Задаем размер мира
+                        resizeWorld(Integer.parseInt(sX) + 18, Integer.parseInt(sY) + 18);
                     }
                     catch (NumberFormatException nfe) {
                         JOptionPane.showMessageDialog(null, "Не удалось загрузить файл. Неверный формат файла .rle.");
@@ -275,40 +274,34 @@ public class Main {
                 for (int i = 0; i < line.length(); i++)
                 {
                     switch (line.charAt(i)) {
-                        case 'b': { //Клетка мертва
+                        case 'b' -> { //Клетка мертва
                             countCells = (countCells == 0) ? 1 : countCells;
                             for (int j = iX; j < iX + countCells; j++)
                                 CurrentWorld[j][iY] = false;
                             iX += countCells;
                             countCells = 0;
                         }
-                            break;
-                        case 'o': { //Клетка жива
+                        case 'o' -> { //Клетка жива
                             countCells = (countCells == 0) ? 1 : countCells;
                             for (int j = iX; j < iX + countCells; j++)
                                 CurrentWorld[j][iY] = true;
                             iX += countCells;
                             countCells = 0;
                         }
-                            break;
-                        case '$': { //Переход на новую строку
-                            iX = 1;
+                        case '$' -> { //Переход на новую строку
+                            iX = 9;
                             if (countCells > 1)
-                                iY += countCells -1;
+                                iY += countCells - 1;
                             else
                                 iY++;
                             countCells = 0;
                         }
-                            break;
-                        case '!': { //Завершаем чтение файла
-                            isReadLine = false;
-                        }
-                            break;
-                        case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9': { //Парсим цифры
-                            countCells = countCells * 10 + Character.getNumericValue(line.charAt(i));
-                        } break;
-                        default:
-                            throw new IllegalStateException("Unexpected value: " + line.charAt(i));
+                        case '!' -> //Завершаем чтение файла
+                                isReadLine = false;
+                        case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' -> //Парсим цифры
+                                countCells = countCells * 10 + Character.getNumericValue(line.charAt(i));
+                        default ->
+                                throw new IllegalStateException("Unexpected value: " + line.charAt(i));
                     }
                 }
                 //Переходим на следующую строку
@@ -317,12 +310,11 @@ public class Main {
             //Перерисовываем мир
             CanvasWorld.repaint();
         }
-        catch (FileNotFoundException exception) {
+        catch (FileNotFoundException ignored) {
 
         } catch (IOException ioException) {
             ioException.printStackTrace();
         }
-
     }
 
     //Отрисовываем мир
