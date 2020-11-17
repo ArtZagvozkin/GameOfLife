@@ -3,10 +3,12 @@
 package com.company;
 
 import javax.swing.*;
+import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.*;
-import java.util.Random;
+import java.io.*;
+import java.lang.reflect.Array;
+import java.util.*;
 import java.util.Timer;
-import java.util.TimerTask;
 
 public class Main {
 
@@ -21,6 +23,7 @@ public class Main {
     boolean[][] CurrentWorld = new boolean[Width][Height]; //Состояние текущей всленной
     boolean[][] NextWorld = new boolean[Width][Height]; //Следующая вселенная
     Canvas CanvasWorld = new Canvas(); //Канва для отображения вселенной
+    JFrame frame = new JFrame("Game of Life"); //Создаем frame с заголовком "Game of Life"
 
     //Дополнительный функционал
     volatile boolean isGenerate = false; //Ключ, который разрешает генерацию нового поколения. Для реализации паузы
@@ -35,14 +38,14 @@ public class Main {
 
     //Запуск и отрисовка окна
     void showFrame() {
-        //Создаём и описываем окно
-        JFrame frame = new JFrame("Game of Life"); //Создаем frame с заголовком "Game of Life"
-        frame.setSize(Width * PointRadius + 16, Height * PointRadius + 67); //Размер окна
+        //Описываем окно
         frame.setResizable(false); //Запрет на изменение размера окна
-        frame.setLocationRelativeTo(null); //Окно по центру
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);  //Завершение программы при закрытии окна
-        CanvasWorld.setBackground(BackgroundColor); //Задаём фон вселенной
-
+        frame.setMinimumSize(new Dimension(600,100)); //Задаём минимальные размеры окна (600*100)
+        frame.getContentPane().add(CanvasWorld, BorderLayout.CENTER); //Помещаем CanvasWorld в frame
+        frame.setBackground(Color.LIGHT_GRAY); //Фон окна
+        CanvasWorld.setBackground(Color.WHITE); //Фон вселенной
+        resizeWorld(Width, Height);
 
         //Информационный блок состояния вселенной
         JLabel LblTime = new JLabel("Time: ");
@@ -55,7 +58,6 @@ public class Main {
         PnlInfo.add(LblTime);
         PnlInfo.add(LblFPS);
         PnlInfo.add(LblFrame);
-
 
         //Кнопки
         JButton BtnRand = new JButton("Random");
@@ -83,6 +85,35 @@ public class Main {
         //Нажатие на кнопку "Load"
         BtnLoad.addActionListener(e -> {
             //Загрузка из файла
+            JFileChooser fileChooser = new JFileChooser();
+            fileChooser.setDialogTitle("Select the file with the extension '.rle'");
+            //Режим только каталог
+            fileChooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
+            //Фильтр расширений
+            fileChooser.setFileFilter(new FileNameExtensionFilter(".rle files", "rle"));
+            //Открывает окно выбора файла
+            int result = fileChooser.showOpenDialog(null);
+            if (result == JFileChooser.APPROVE_OPTION) {//Если директория выбрана, то пакажем ее в заголовке окна
+                //Предварительно очищаем мир
+                for (int x = 0; x < Width; x++)
+                    for (int y = 0; y < Height; y++)
+                        CurrentWorld[x][y] = false;
+                //Загружаем файл и рисуем
+                rleToMatrix(fileChooser.getSelectedFile());
+                //Обновляем переменные состояния и информационный блок
+                TimeSec = 0;
+                CountFrame = 0;
+                PrevCountFrame = 0;
+                LblTime.setText("Time: 0");
+                LblFPS.setText("FPS: 0");
+                LblFrame.setText("Frame: 0");
+                BtnStart.setText("Start");
+                //Перерисовываем вселенную
+                CanvasWorld.repaint();
+            }
+            else { //Иначе выводим сообщение об ошибке
+                JOptionPane.showMessageDialog(null, "No file selected.");
+            }
         });
         //Нажатие на кнопку "Clear"
         BtnClear.addActionListener(e -> {
@@ -112,7 +143,6 @@ public class Main {
             BtnClear.setEnabled(!isGenerate);
         });
 
-
         //Создаем JMenuBar, в который помещаем кнопки и информационный блок
         JMenuBar menuBar = new JMenuBar();
         menuBar.add(BtnRand);
@@ -120,11 +150,8 @@ public class Main {
         menuBar.add(BtnClear);
         menuBar.add(BtnStart);
         menuBar.add(PnlInfo);
-
-        //Помещаем CanvasWorld и menuBar в frame
+        //Помещаем menuBar в frame
         frame.setJMenuBar(menuBar);
-        frame.getContentPane().add(BorderLayout.CENTER, CanvasWorld);
-
 
         //Делаем frame видимым
         frame.setVisible(true);
@@ -150,6 +177,18 @@ public class Main {
             LblFrame.setText("Frame: " + CountFrame);
             CanvasWorld.repaint();
         }
+    }
+
+    //Задаем размер мира
+    void resizeWorld(int x, int y) {
+        Width = x;
+        Height = y;
+        PointRadius = Math.min(1360 / x, 654 / y);
+
+        CanvasWorld.setSize(Width * PointRadius, Height * PointRadius);
+
+        frame.setSize(Width * PointRadius + 16, Height * PointRadius + 67); //Размер окна
+        frame.setLocationRelativeTo(null); //Окно по центру
     }
 
     //Формируем следующий кадр
@@ -185,6 +224,107 @@ public class Main {
         return count;
     }
 
+    //Парсинг файла .rle
+    void rleToMatrix(File inFile) {
+        String TestField1 = "";
+
+        try {
+            FileReader rleFile = new FileReader(inFile);
+            //Создаём BufferedReader для построчного считывания
+            BufferedReader rleReader = new BufferedReader(rleFile);
+
+            //Реализуем построчное чтение файла .rle
+            String line = rleReader.readLine();  //Получаем первую строку
+            boolean isReadLine = true; //Ключ, который разрешает чтение строки, пока не встретится символ конца файла
+            //Начинаем в цикле построчно обрабатывать файл
+            int countCells = 0; //Накапливаем количество ячеек
+            int iX = 1, iY = 1;
+            while (line != null && isReadLine) {
+                //Пропускаем строки с комментариями #
+                if (line.charAt(0) == '#')
+                {
+                    line = rleReader.readLine();
+                    continue;
+                }
+                //Удаляем все пробелы
+                line = line.replace(" ", "");
+
+                //Парсим строку, которую содержит размеры окна(x*y)
+                if (line.charAt(0) == 'x') {
+                    String sX, sY;
+                    //Получаем значения X и Y
+                    sX = line.substring(line.indexOf('x') + 2, line.indexOf(','));
+                    sY = line.substring(line.indexOf('y') + 2);
+                    //Задаем новые параметры окна
+                    try {
+                        if (Integer.parseInt(sX) > 1500 || Integer.parseInt(sY) > 600)
+                        {
+                            JOptionPane.showMessageDialog(null, "Слишком большое изображение. Не удалось загрузить.");
+                            break;
+                        }
+                        resizeWorld(Integer.parseInt(sX) + 20, Integer.parseInt(sY) + 20);
+                    }
+                    catch (NumberFormatException nfe) {
+                        JOptionPane.showMessageDialog(null, "Не удалось загрузить файл. Неверный формат файла .rle.");
+                        break;
+                    }
+                    line = rleReader.readLine();
+                    continue;
+                }
+                //Парсим расположение живых клеток в очередной строке. Поисмвольный анализ строки с помощью for
+                for (int i = 0; i < line.length(); i++)
+                {
+                    switch (line.charAt(i)) {
+                        case 'b': { //Клетка мертва
+                            countCells = (countCells == 0) ? 1 : countCells;
+                            for (int j = iX; j < iX + countCells; j++)
+                                CurrentWorld[j][iY] = false;
+                            iX += countCells;
+                            countCells = 0;
+                        }
+                            break;
+                        case 'o': { //Клетка жива
+                            countCells = (countCells == 0) ? 1 : countCells;
+                            for (int j = iX; j < iX + countCells; j++)
+                                CurrentWorld[j][iY] = true;
+                            iX += countCells;
+                            countCells = 0;
+                        }
+                            break;
+                        case '$': { //Переход на новую строку
+                            iX = 1;
+                            if (countCells > 1)
+                                iY += countCells -1;
+                            else
+                                iY++;
+                            countCells = 0;
+                        }
+                            break;
+                        case '!': { //Завершаем чтение файла
+                            isReadLine = false;
+                        }
+                            break;
+                        case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9': { //Парсим цифры
+                            countCells = countCells * 10 + Character.getNumericValue(line.charAt(i));
+                        } break;
+                        default:
+                            throw new IllegalStateException("Unexpected value: " + line.charAt(i));
+                    }
+                }
+                //Переходим на следующую строку
+                line = rleReader.readLine();
+            }
+            //Перерисовываем мир
+            CanvasWorld.repaint();
+        }
+        catch (FileNotFoundException exception) {
+
+        } catch (IOException ioException) {
+            ioException.printStackTrace();
+        }
+
+    }
+
     //Отрисовываем мир
     public class Canvas extends JPanel {
         @Override
@@ -192,11 +332,14 @@ public class Main {
             super.paint(g);
             //Задаем цвет точки
             g.setColor(PointColor);
-            //Распологаем живые клетки по канве
+            //Распологаем живые клетки на канве
             for (int x = 0; x < Main.this.Width; x++)
                 for (int y = 0; y < Main.this.Height; y++)
                     if (CurrentWorld[x][y])
                         g.fillRect(x * PointRadius, y * PointRadius, PointRadius, PointRadius);
+            //Рисуем границу
+            g.drawLine(Main.this.Width * PointRadius, 0, Main.this.Width * PointRadius, Main.this.Height * PointRadius);
+            g.drawLine(0, Main.this.Height * PointRadius, Main.this.Width * PointRadius, Main.this.Height * PointRadius);
         }
     }
 }
